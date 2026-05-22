@@ -25,10 +25,11 @@ export default function HomePage() {
     <div className="p-4 max-w-lg mx-auto">
       <div className="mt-8 mb-6">
         <p className="text-gray-400 text-sm capitalize">{today}</p>
-        <h1 className="text-3xl font-bold text-gray-800 mt-1">Bonjour 👋</h1>
+        <h1 className="text-3xl font-bold text-gray-800 mt-1">Bonjour👋</h1>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
+      {user?.role !== 'puer' && (
         <Link href="/menu">
           <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm hover:shadow-md transition cursor-pointer">
             <span className="text-3xl">🍽️</span>
@@ -36,7 +37,7 @@ export default function HomePage() {
             <p className="text-xs text-gray-400 mt-1">Gérer les menus de la semaine</p>
           </div>
         </Link>
-
+      )}
         <Link href="/log">
           <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm hover:shadow-md transition cursor-pointer">
             <span className="text-3xl">✏️</span>

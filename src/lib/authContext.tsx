@@ -2,34 +2,57 @@
 
 import { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '@/lib/firebase';
 import { useRouter, usePathname } from 'next/navigation';
 
+interface AppUser {
+  uid: string;
+  email: string | null;
+  role: 'admin' | 'puer';
+  displayName?: string | null;
+}
+
 interface AuthContextType {
-  user: User | null;
+  user: AppUser | null;
   loading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({ user: null, loading: true });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        // Récupère le rôle depuis Firestore
+        const docRef = doc(db, 'users', firebaseUser.uid);
+        const docSnap = await getDoc(docRef);
+        const role = docSnap.exists() ? docSnap.data().role : 'puer';
+
+        document.cookie = `role=${role}; path=/; max-age=${60 * 60 * 24 * 7}`;
+
+
+
+        setUser({
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          role,
+          displayName: firebaseUser.displayName,
+        });
+
+        if (pathname === '/login') router.push('/');
+      } else {
+        document.cookie = 'role=; path=/; max-age=0';
+        setUser(null);
+        if (pathname !== '/login') router.push('/login');
+      }
+
       setLoading(false);
-
-      if (!user && pathname !== '/login') {
-        router.push('/login');
-      }
-
-      if (user && pathname === '/login') {
-        router.push('/');
-      }
     });
 
     return () => unsubscribe();
