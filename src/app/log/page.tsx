@@ -16,7 +16,6 @@ import {
 
 const REPAS = ['Matin', 'Midi', 'Goûter', 'Souper'];
 const BRISTOL = [1, 2, 3, 4, 5, 6, 7];
-const JOURS_COURT = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 
 const BRISTOL_DESC: Record<number, string> = {
   1: '🪨 Dur, séparé',
@@ -28,33 +27,12 @@ const BRISTOL_DESC: Record<number, string> = {
   7: '💦 Liquide',
 };
 
-function getMonday(dateStr: string) {
-  const d = new Date(dateStr + 'T12:00:00');
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  d.setDate(diff);
-  return d.toISOString().split('T')[0];
-}
-
-function getDatesOfWeek(monday: string) {
-  const dates = [];
-  const base = new Date(monday + 'T12:00:00');
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(base);
-    d.setDate(base.getDate() + i);
-    dates.push(d.toISOString().split('T')[0]);
-  }
-  return dates;
-}
-
 export default function LogPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
 
   const today = new Date().toISOString().split('T')[0];
   const [date, setDate] = useState(today);
-  const [semaine, setSemaine] = useState(getMonday(today));
-  const [logsOfWeek, setLogsOfWeek] = useState<string[]>([]); // dates qui ont un log
   const [menuDuJour, setMenuDuJour] = useState<Record<string, string>>({});
   const [consomme, setConsomme] = useState<Record<string, string>>({});
   const [nombreSelles, setNombreSelles] = useState(0);
@@ -69,46 +47,12 @@ export default function LogPage() {
   }, [user, loading]);
 
   useEffect(() => {
-    setSemaine(getMonday(date));
-  }, [date]);
+  if (date && user && !loading) {
+    loadMenu();
+    loadLog();
+  }
+}, [date, user, loading]);
 
-  useEffect(() => {
-    if (semaine && user) loadLogsOfWeek();
-  }, [semaine, user]);
-
-  useEffect(() => {
-    if (date && user) {
-      loadMenu();
-      loadLog();
-    }
-  }, [date, user]);
-
-  const loadLogsOfWeek = async () => {
-    const dates = getDatesOfWeek(semaine);
-    const q = query(
-      collection(db, 'logs'),
-      where('date', 'in', dates),
-      where('userId', '==', user?.uid)
-    );
-    const snap = await getDocs(q);
-    setLogsOfWeek(snap.docs.map((d) => d.data().date));
-  };
-
-  const prevWeek = () => {
-    const d = new Date(semaine + 'T12:00:00');
-    d.setDate(d.getDate() - 7);
-    const newMonday = d.toISOString().split('T')[0];
-    setSemaine(newMonday);
-    setDate(newMonday);
-  };
-
-  const nextWeek = () => {
-    const d = new Date(semaine + 'T12:00:00');
-    d.setDate(d.getDate() + 7);
-    const newMonday = d.toISOString().split('T')[0];
-    setSemaine(newMonday);
-    setDate(newMonday);
-  };
 
   const handleNombreSelles = (n: number) => {
     const val = Math.max(0, n);
@@ -129,24 +73,23 @@ export default function LogPage() {
   };
 
   const getSemaine = (dateStr: string) => {
-    const d = new Date(dateStr + 'T12:00:00');
+    const d = new Date(dateStr);
     const day = d.getDay();
     const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-    d.setDate(diff);
-    return d.toISOString().split('T')[0];
+    return new Date(d.setDate(diff)).toISOString().split('T')[0];
   };
 
   const getJour = (dateStr: string) => {
     const jours = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
-    return jours[new Date(dateStr + 'T12:00:00').getDay()];
+    return jours[new Date(dateStr).getDay()];
   };
 
   const loadMenu = async () => {
-    const s = getSemaine(date);
+    const semaine = getSemaine(date);
     const jour = getJour(date);
     const q = query(
       collection(db, 'menus'),
-      where('semaine', '==', s),
+      where('semaine', '==', semaine),
       where('jour', '==', jour)
     );
     const snap = await getDocs(q);
@@ -179,112 +122,58 @@ export default function LogPage() {
     }
   };
 
-  const handleSave = async () => {
-    setSaving(true);
-    const q = query(
-      collection(db, 'logs'),
-      where('date', '==', date),
-      where('userId', '==', user?.uid)
-    );
-    const snap = await getDocs(q);
-    const payload = {
-      date,
-      userId: user?.uid,
-      userEmail: user?.email,
-      consomme,
-      nombreSelles,
-      bristolParSelle,
-      notes,
-      createdAt: new Date(),
-    };
-    if (!snap.empty) {
-      await updateDoc(doc(db, 'logs', snap.docs[0].id), payload);
-    } else {
-      await addDoc(collection(db, 'logs'), payload);
-    }
-    setSaving(false);
-    setSaved(true);
-    // Refresh dots
-    loadLogsOfWeek();
-    setTimeout(() => setSaved(false), 2000);
+const handleSave = async () => {
+  setSaving(true);
+  const q = query(
+    collection(db, 'logs'),
+    where('date', '==', date),
+    where('userId', '==', user?.uid)
+  );
+  const snap = await getDocs(q);
+  console.log('Existing docs found:', snap.docs.length);
+  const payload = {
+    date,
+    userId: user?.uid,
+    userEmail: user?.email,
+    consomme,
+    nombreSelles,
+    bristolParSelle,
+    notes,
+    createdAt: new Date(),
   };
+  if (!snap.empty) {
+    await updateDoc(doc(db, 'logs', snap.docs[0].id), payload);
+  } else {
+    await addDoc(collection(db, 'logs'), payload);
+  }
+  setSaving(false);
+  setSaved(true);
+  await loadLog();
+  setTimeout(() => setSaved(false), 2000);
+};
+
 
   if (loading) return null;
-
-  const datesOfWeek = getDatesOfWeek(semaine);
-
-  // Label semaine
-  const labelSemaine = () => {
-    const first = new Date(semaine + 'T12:00:00');
-    const last = new Date(semaine + 'T12:00:00');
-    last.setDate(last.getDate() + 6);
-    return `${first.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })} – ${last.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}`;
-  };
 
   return (
     <div className="p-4 max-w-lg mx-auto">
       <h1 className="text-2xl font-bold text-gray-800 mt-6 mb-4">📋 Saisie du jour</h1>
 
-      {/* Calendrier semaine */}
+      {/* Date */}
       <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm mb-5">
-        {/* Navigation semaine */}
-        <div className="flex items-center justify-between mb-3">
-          <button
-            onClick={prevWeek}
-            className="w-8 h-8 rounded-full bg-gray-100 text-gray-600 font-bold hover:bg-gray-200 transition flex items-center justify-center"
-          >
-            ‹
-          </button>
-          <span className="text-sm font-medium text-gray-600">{labelSemaine()}</span>
-          <button
-            onClick={nextWeek}
-            className="w-8 h-8 rounded-full bg-gray-100 text-gray-600 font-bold hover:bg-gray-200 transition flex items-center justify-center"
-          >
-            ›
-          </button>
-        </div>
+        <label className="text-sm text-gray-500 mb-1 block">Date</label>
+        <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400"
+            style={{ colorScheme: 'light' }}
+        />
+        <p className="text-sm text-gray-600 mt-1">
+          {date ? new Date(date + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }) : ''}
+        </p>
 
-        {/* Jours */}
-        <div className="grid grid-cols-7 gap-1">
-          {datesOfWeek.map((d, i) => {
-            const isSelected = d === date;
-            const isToday = d === today;
-            const hasLog = logsOfWeek.includes(d);
-            return (
-              <button
-                key={d}
-                onClick={() => setDate(d)}
-                className={`flex flex-col items-center rounded-xl py-2 transition ${
-                  isSelected
-                    ? 'bg-blue-500 text-white'
-                    : isToday
-                    ? 'bg-blue-50 text-blue-600'
-                    : 'text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                <span className="text-xs font-medium">{JOURS_COURT[i]}</span>
-                <span className="text-sm font-bold mt-0.5">
-                  {new Date(d + 'T12:00:00').getDate()}
-                </span>
-                {hasLog && (
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full mt-1 ${
-                      isSelected ? 'bg-white' : 'bg-blue-400'
-                    }`}
-                  />
-                )}
-              </button>
-            );
-          })}
-        </div>
       </div>
-
-      {/* Date affichée */}
-      <p className="text-sm text-gray-500 mb-4 text-center">
-        {new Date(date + 'T12:00:00').toLocaleDateString('fr-FR', {
-          weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
-        })}
-      </p>
 
       {/* Repas */}
       <div className="flex flex-col gap-4 mb-5">
@@ -311,6 +200,7 @@ export default function LogPage() {
       <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm mb-5">
         <h2 className="font-bold text-gray-700 mb-3">💩 Selles</h2>
 
+        {/* Bouton référence Bristol */}
         <button
           onClick={() => setShowBristolRef(!showBristolRef)}
           className="text-xs text-blue-500 underline mb-3 block"
@@ -318,6 +208,7 @@ export default function LogPage() {
           {showBristolRef ? '▲ Masquer le tableau de référence' : '📊 Voir le tableau de référence Bristol'}
         </button>
 
+        {/* Image référence collapsible */}
         {showBristolRef && (
           <div className="mb-4 rounded-xl overflow-hidden border border-gray-200">
             <img
@@ -328,6 +219,7 @@ export default function LogPage() {
           </div>
         )}
 
+        {/* Nombre de selles */}
         <div className="flex items-center gap-4 mb-4">
           <p className="text-sm text-gray-600">Nombre de selles :</p>
           <div className="flex items-center gap-3">
@@ -347,6 +239,7 @@ export default function LogPage() {
           </div>
         </div>
 
+        {/* Bristol par selle */}
         {bristolParSelle.map((stade, index) => (
           <div key={index} className="mb-4 bg-gray-50 rounded-xl p-3">
             <p className="text-sm font-medium text-gray-600 mb-2">Selle {index + 1} :</p>

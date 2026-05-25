@@ -60,17 +60,35 @@ export default function RecapPage() {
   }, [user, loading]);
 
   useEffect(() => {
-    if (semaine) loadLogs();
-  }, [semaine]);
+  if (semaine && user && !loading) loadLogs();
+}, [semaine, user, loading]);
 
-  const loadLogs = async () => {
-    setLoadingData(true);
-    const dates = getDatesOfWeek(semaine);
-    const q = query(collection(db, 'logs'), where('date', 'in', dates));
-    const snap = await getDocs(q);
-    setLogs(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    setLoadingData(false);
-  };
+
+const loadLogs = async () => {
+    if (!user) return;
+  setLoadingData(true);
+  const dates = getDatesOfWeek(semaine);
+
+  let q;
+  if (user?.role === 'admin') {
+    q = query(
+      collection(db, 'logs'),
+      where('date', 'in', dates)
+    );
+  } else {
+    q = query(
+      collection(db, 'logs'),
+      where('date', 'in', dates),
+      where('userId', '==', user?.uid)
+    );
+  }
+
+  const snap = await getDocs(q);
+  console.log('logs trouvés:', snap.docs.length);
+  setLogs(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+  setLoadingData(false);
+};
+
 
   const prevWeek = () => {
     const d = new Date(semaine + 'T12:00:00');
