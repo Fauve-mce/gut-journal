@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-const NURSE_ALLOWED = ['/log', '/recap', '/profile'];
+const NURSE_ALLOWED = ['/log', '/recap', '/profil'];
 
 export function middleware(request: NextRequest) {
   const role = request.cookies.get('role')?.value;
