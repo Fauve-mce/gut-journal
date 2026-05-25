@@ -27,11 +27,16 @@ const BRISTOL_DESC: Record<number, string> = {
   7: '💦 Liquide',
 };
 
+function getLocalToday() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
 export default function LogPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalToday();
   const [date, setDate] = useState(today);
   const [menuDuJour, setMenuDuJour] = useState<Record<string, string>>({});
   const [consomme, setConsomme] = useState<Record<string, string>>({});
@@ -41,18 +46,19 @@ export default function LogPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [showBristolRef, setShowBristolRef] = useState(false);
+  const [existingLogId, setExistingLogId] = useState<string | null>(null);
+
 
   useEffect(() => {
     if (!loading && !user) router.push('/login');
   }, [user, loading]);
 
   useEffect(() => {
-  if (date && user && !loading) {
-    loadMenu();
-    loadLog();
-  }
-}, [date, user, loading]);
-
+    if (date && user && !loading) {
+      loadMenu();
+      loadLog();
+    }
+  }, [date, user, loading]);
 
   const handleNombreSelles = (n: number) => {
     const val = Math.max(0, n);
@@ -73,15 +79,16 @@ export default function LogPage() {
   };
 
   const getSemaine = (dateStr: string) => {
-    const d = new Date(dateStr);
+    const d = new Date(dateStr + 'T12:00:00');
     const day = d.getDay();
     const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-    return new Date(d.setDate(diff)).toISOString().split('T')[0];
+    d.setDate(diff);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
 
   const getJour = (dateStr: string) => {
     const jours = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
-    return jours[new Date(dateStr).getDay()];
+    return jours[new Date(dateStr + 'T12:00:00').getDay()];
   };
 
   const loadMenu = async () => {
@@ -101,57 +108,58 @@ export default function LogPage() {
     setMenuDuJour(data);
   };
 
-  const loadLog = async () => {
+const loadLog = async () => {
+  const q = query(
+    collection(db, 'logs'),
+    where('date', '==', date)
+    // pas de filtre userId
+  );
+  const snap = await getDocs(q);
+  if (!snap.empty) {
+    const data = snap.docs[0].data();
+    setExistingLogId(snap.docs[0].id);
+    setConsomme(data.consomme || {});
+    setNombreSelles(data.nombreSelles || 0);
+    setBristolParSelle(data.bristolParSelle || []);
+    setNotes(data.notes || '');
+  } else {
+    setExistingLogId(null);
+    setConsomme({});
+    setNombreSelles(0);
+    setBristolParSelle([]);
+    setNotes('');
+  }
+};
+
+
+  const handleSave = async () => {
+    setSaving(true);
     const q = query(
       collection(db, 'logs'),
       where('date', '==', date),
       where('userId', '==', user?.uid)
     );
     const snap = await getDocs(q);
+    const payload = {
+      date,
+      userId: user?.uid,
+      userEmail: user?.email,
+      consomme,
+      nombreSelles,
+      bristolParSelle,
+      notes,
+      createdAt: new Date(),
+    };
     if (!snap.empty) {
-      const data = snap.docs[0].data();
-      setConsomme(data.consomme || {});
-      setNombreSelles(data.nombreSelles || 0);
-      setBristolParSelle(data.bristolParSelle || []);
-      setNotes(data.notes || '');
+      await updateDoc(doc(db, 'logs', snap.docs[0].id), payload);
     } else {
-      setConsomme({});
-      setNombreSelles(0);
-      setBristolParSelle([]);
-      setNotes('');
+      await addDoc(collection(db, 'logs'), payload);
     }
+    setSaving(false);
+    setSaved(true);
+    await loadLog();
+    setTimeout(() => setSaved(false), 2000);
   };
-
-const handleSave = async () => {
-  setSaving(true);
-  const q = query(
-    collection(db, 'logs'),
-    where('date', '==', date),
-    where('userId', '==', user?.uid)
-  );
-  const snap = await getDocs(q);
-  console.log('Existing docs found:', snap.docs.length);
-  const payload = {
-    date,
-    userId: user?.uid,
-    userEmail: user?.email,
-    consomme,
-    nombreSelles,
-    bristolParSelle,
-    notes,
-    createdAt: new Date(),
-  };
-  if (!snap.empty) {
-    await updateDoc(doc(db, 'logs', snap.docs[0].id), payload);
-  } else {
-    await addDoc(collection(db, 'logs'), payload);
-  }
-  setSaving(false);
-  setSaved(true);
-  await loadLog();
-  setTimeout(() => setSaved(false), 2000);
-};
-
 
   if (loading) return null;
 
@@ -163,16 +171,15 @@ const handleSave = async () => {
       <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm mb-5">
         <label className="text-sm text-gray-500 mb-1 block">Date</label>
         <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400"
-            style={{ colorScheme: 'light' }}
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400"
+          style={{ colorScheme: 'light' }}
         />
         <p className="text-sm text-gray-600 mt-1">
           {date ? new Date(date + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }) : ''}
         </p>
-
       </div>
 
       {/* Repas */}
@@ -183,8 +190,7 @@ const handleSave = async () => {
             {menuDuJour[repas] && (
               <p className="text-xs text-blue-400 mb-2">📌 Prévu : {menuDuJour[repas]}</p>
             )}
-            <input
-              type="text"
+            <textarea
               value={consomme[repas] || ''}
               onChange={(e) =>
                 setConsomme((prev) => ({ ...prev, [repas]: e.target.value }))
@@ -200,7 +206,6 @@ const handleSave = async () => {
       <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm mb-5">
         <h2 className="font-bold text-gray-700 mb-3">💩 Selles</h2>
 
-        {/* Bouton référence Bristol */}
         <button
           onClick={() => setShowBristolRef(!showBristolRef)}
           className="text-xs text-blue-500 underline mb-3 block"
@@ -208,7 +213,6 @@ const handleSave = async () => {
           {showBristolRef ? '▲ Masquer le tableau de référence' : '📊 Voir le tableau de référence Bristol'}
         </button>
 
-        {/* Image référence collapsible */}
         {showBristolRef && (
           <div className="mb-4 rounded-xl overflow-hidden border border-gray-200">
             <img
@@ -219,7 +223,6 @@ const handleSave = async () => {
           </div>
         )}
 
-        {/* Nombre de selles */}
         <div className="flex items-center gap-4 mb-4">
           <p className="text-sm text-gray-600">Nombre de selles :</p>
           <div className="flex items-center gap-3">
@@ -239,7 +242,6 @@ const handleSave = async () => {
           </div>
         </div>
 
-        {/* Bristol par selle */}
         {bristolParSelle.map((stade, index) => (
           <div key={index} className="mb-4 bg-gray-50 rounded-xl p-3">
             <p className="text-sm font-medium text-gray-600 mb-2">Selle {index + 1} :</p>

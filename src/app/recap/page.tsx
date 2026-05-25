@@ -20,12 +20,17 @@ const JOURS_COURT = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 const JOURS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
 const REPAS = ['Matin', 'Midi', 'Goûter', 'Souper'];
 
+function getLocalToday() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
 function getMonday(dateStr: string) {
   const d = new Date(dateStr + 'T12:00:00');
   const day = d.getDay();
   const diff = d.getDate() - day + (day === 0 ? -6 : 1);
   d.setDate(diff);
-  return d.toISOString().split('T')[0];
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function getDatesOfWeek(monday: string) {
@@ -34,7 +39,7 @@ function getDatesOfWeek(monday: string) {
   for (let i = 0; i < 7; i++) {
     const d = new Date(base);
     d.setDate(base.getDate() + i);
-    dates.push(d.toISOString().split('T')[0]);
+    dates.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
   }
   return dates;
 }
@@ -49,7 +54,7 @@ export default function RecapPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalToday();
   const [semaine, setSemaine] = useState(getMonday(today));
   const [selectedDate, setSelectedDate] = useState(today);
   const [logs, setLogs] = useState<any[]>([]);
@@ -60,40 +65,28 @@ export default function RecapPage() {
   }, [user, loading]);
 
   useEffect(() => {
-  if (semaine && user && !loading) loadLogs();
-}, [semaine, user, loading]);
-
+    if (semaine && user && !loading) loadLogs();
+  }, [semaine, user, loading]);
 
 const loadLogs = async () => {
-    if (!user) return;
+  if (!user) return;
   setLoadingData(true);
   const dates = getDatesOfWeek(semaine);
 
-  let q;
-  if (user?.role === 'admin') {
-    q = query(
-      collection(db, 'logs'),
-      where('date', 'in', dates)
-    );
-  } else {
-    q = query(
-      collection(db, 'logs'),
-      where('date', 'in', dates),
-      where('userId', '==', user?.uid)
-    );
-  }
+  // Un seul enfant → un log par date, tout le monde voit tout
+  const q = query(
+    collection(db, 'logs'),
+    where('date', 'in', dates)
+  );
 
   const snap = await getDocs(q);
-  console.log('logs trouvés:', snap.docs.length);
   setLogs(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
   setLoadingData(false);
 };
-
-
   const prevWeek = () => {
     const d = new Date(semaine + 'T12:00:00');
     d.setDate(d.getDate() - 7);
-    const newMonday = d.toISOString().split('T')[0];
+    const newMonday = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     setSemaine(newMonday);
     setSelectedDate(newMonday);
   };
@@ -101,7 +94,7 @@ const loadLogs = async () => {
   const nextWeek = () => {
     const d = new Date(semaine + 'T12:00:00');
     d.setDate(d.getDate() + 7);
-    const newMonday = d.toISOString().split('T')[0];
+    const newMonday = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     setSemaine(newMonday);
     setSelectedDate(newMonday);
   };
